@@ -116,7 +116,10 @@ def parse_description_for_alerts(description):
 def read_file(file):
 	with open(file, newline='') as csv_file:
 		for row in csv.DictReader(csv_file, delimiter=','):
-			if is_layer_5(row['created_on']):
+			if (
+				is_layer_5(row['created_on']) and
+				row['urgency'] == 'high'
+			):
 				yield row
 
 
