@@ -1,18 +1,30 @@
 #!/usr/bin/env python3
 
+# NOTES:
+# API and CSV return some different headers
+# | CSV              | API
+# | ['created_at']   | ['created_on']
+# | ['service_name'] | ['service']['summary']
+
 from email.policy import default
 import sys
 import argparse
 import csv
 import re
-import time
+import yaml
+
+from pdpyras import APISession, PDClientError
 
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timedelta
+from pathlib import Path
 
-default_csv_name = 'incidents.csv'
-default_result_count = 20
-pd_time_format = '%Y-%m-%dT%H:%M:%S+00:00'
+default_token_file = Path.home().joinpath('.config', 'pagerduty', 'pd.yml')
+# default_csv_name = 'incidents.csv'
+default_result_count = 5
+pd_time_format = '%Y-%m-%dT%H:%M:%SZ'
+
+sre_team_ids = ['PASPK4G']
 
 layers = {
 	1: '22:30',
@@ -24,13 +36,23 @@ layers = {
 
 
 def populate_args(parser):
-	parser.add_argument('-c', '--count', type=int, required=False, default=20,
+
+	parser.add_argument('-c', '--count', type=int, required=False, default=default_result_count,
 		help=f'Number of results to display (default: {default_result_count})')
-	parser.add_argument('-f', '--file', type=str, required=True, default=default_csv_name,
-		help=f'PagerDuty CSV formatted incident file (default: {default_csv_name})')
+	# parser.add_argument('-f', '--file', type=str, required=True, default=default_csv_name,
+	#	help=f'PagerDuty CSV formatted incident file (default: {default_csv_name})')
 	parser.add_argument('-l', '--layer', type=int, required=True,
 		choices=layers.keys(), help='Layer (region) to filter')
 
+	auth_group = parser.add_mutually_exclusive_group()
+	auth_group.add_argument('-a', '--token_file',
+		type=lambda p: Path(p).absolute(),
+		required=False, default=default_token_file,
+		help='Path to PagerDuty token YAML file')
+	auth_group.add_argument('-t', '--token', type=str, required=False,
+		help='PagerDuty API token')
+
+	return parser
 
 def main():
 	parser = argparse.ArgumentParser()
@@ -44,8 +66,15 @@ def main():
 
 	args = parser.parse_args()
 
+	# Retrieve incidents from PagerDuty API
+	incidents = get_incidents(args)
+
 	# Read incidents from the file, for the specified layer
-	incidents = read_file(args.file, args.layer)
+	# incidents = read_file(args.file, args.layer)
+
+	if incidents is None:
+		print('No incidents found')
+		return
 
 	if args.command == 'alerts':
 		alerts(incidents, args.count)
@@ -56,10 +85,10 @@ def main():
 # clusters returns a dict of top alerting clusters and the count of each
 def clusters(incidents, count):
 	cluster_list = ([
-		parse_description_for_cluster(item['service_name']) for item in incidents
-		if item['service_name'] != 'prod-deadmanssnitch' and
-		item['service_name'] != 'Zabbix Service' and
-		item['service_name'] != "app-sre-alertmanager"
+		parse_description_for_cluster(item['service']['summary']) for item in incidents
+		if item['service']['summary'] != 'prod-deadmanssnitch' and
+		item['service']['summary'] != 'Zabbix Service' and
+		item['service']['summary'] != "app-sre-alertmanager"
 	])
 
 	print(f'COUNT\tCLUSTER')
@@ -101,7 +130,7 @@ def alerts(incidents, count):
 		parse_description_for_alerts(item['description']) for item in incidents
 	])
 
-	print(f'COUNT\tCLUSTER')
+	print(f'COUNT\tINCIDENT')
 	for k, v in Counter(alert_list).most_common(count):
 		print(f'{v}\t{k}')
 
@@ -110,17 +139,17 @@ def alerts(incidents, count):
 # remove unique values or extraneous text
 def parse_description_for_alerts(description):
 	strings_to_remove = {
-		# Clean SRE-added '[SOMETHING]' prefixes
-		r'\[.*\]\s': '',
+		# Clean SRE-added '[SOMETHING]' prefixes, with optional dash
+		r'\[.*\]\s(-\s)?': '',
 		# Combine "CRITICAL (1)" and "CRITICAL (2)" alerts
-		r'CRITICAL\s\(\d*\)$': '',
+		r'(CRITICAL|WARNING)\s\(\d*\)$': '',
 		# Combine all ClusterHasGoneMissing alerts
 		r'.*has\sgone\smissing$': 'ClusterHasGoneMissing',
+		# Zabbix-style (?) alerts
+		r'\son\s.*\s\:\s.*$': '',
 	}
 
 	strings_to_match = [
-		r'^Filesystem.*free\sdisk\sspace',
-		r'^docker.ping\sfailed',
 		r'^ClusterProvisioningDelay',
 	]
 
@@ -174,6 +203,57 @@ def layer_plus_one(layer):
 # convert_time_from_string converts a string of the form 'HH:MM' to a datetime
 def convert_time_from_string(time_string):
 	return datetime.strptime(time_string, '%H:%M').time()
+
+
+def auth(token, token_file):
+	if token is None:
+		with open (token_file, 'r') as yaml_data:
+			try:
+				data = yaml.safe_load(yaml_data)
+				return data['authtoken']
+
+			except yaml.YAMLError as err:
+				print(err)
+
+	return token
+
+
+def get_incidents(args):
+	request_params = {
+		'urgencies[]': ['high'],
+		'team_ids[]': sre_team_ids,
+		'since': datetime.now() - timedelta(days=7),
+		'until': datetime.now()
+	}
+	# Retrieve incidents from PagerDuty API
+	api_token = auth(args.token, args.token_file)
+	session = APISession(api_token)
+
+	# Read incidents from the file, for the specified layer
+	# incidents = read_file(args.file, args.layer)
+	try:
+		return [
+			i for i in session.list_all(
+				'incidents',
+				params=request_params
+				) if (
+					is_in_layer(
+						i['created_at'],
+						args.layer
+					) and (
+					i['urgency'] == 'high'
+					)
+				)
+			]
+
+	except PDClientError as e:
+		if e.response:
+			if e.response.status_code == 404:
+				print("User not found")
+			elif e.response.status_code == 401:
+				raise e
+		else:
+			raise e
 
 
 if __name__ == '__main__':
