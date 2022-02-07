@@ -8,6 +8,7 @@
 
 import argparse
 import re
+import sys
 import yaml
 
 from collections import Counter
@@ -16,6 +17,7 @@ from pathlib import Path
 from pdpyras import APISession, PDClientError
 
 default_result_count = 5
+default_days_count = 7
 default_token_file = Path.home().joinpath('.config', 'pagerduty', 'pd.yml')
 pd_time_format = '%Y-%m-%dT%H:%M:%SZ'
 
@@ -42,7 +44,7 @@ def main():
 	args = parser.parse_args()
 
 	# Retrieve incidents from PagerDuty API
-	incidents = get_incidents(args)
+	incidents, previous_incidents = get_incidents(args)
 
 	# Read incidents from the file, for the specified layer
 	# incidents = read_file(args.file, args.layer)
@@ -51,9 +53,18 @@ def main():
 		print('No incidents found')
 		return
 
+	if previous_incidents is None:
+		print('No previous incidents found')
+		return
+
+	print(
+		f"{len(incidents)} high incidents in the last {args.days} days"
+		f"Percent Change from the previous period: {len(previous_incidents) / len(incidents) * 100:.2f}%"
+	)
+
 	if args.command == 'alerts':
 		alerts(incidents, args.count)
-	if args.command == 'clusters':
+	elif args.command == 'clusters':
 		clusters(incidents, args.count)
 
 
@@ -63,6 +74,8 @@ def populate_args(parser):
 		help=f'Number of results to display (default: {default_result_count})')
 	parser.add_argument('-l', '--layer', type=int, required=True,
 		choices=layers.keys(), help='Layer (region) to filter')
+	parser.add_argument('-d', '--days', type=int, required=False, default=default_days_count,
+		help=f'Number of previous days to include (default: {default_days_count})')
 
 	auth_group = parser.add_mutually_exclusive_group()
 	auth_group.add_argument('-a', '--token_file',
@@ -76,12 +89,18 @@ def populate_args(parser):
 
 
 def get_incidents(args):
-	request_params = {
+	this_period_request_params = {
 		'urgencies[]': ['high'],
 		'team_ids[]': sre_team_ids,
-		'since': datetime.now() - timedelta(days=7),
+		'since': datetime.now() - timedelta(days=args.days),
 		'until': datetime.now()
 	}
+
+	previous_period_request_params = {
+		'since': datetime.now() - timedelta(days=args.days * 2),
+		'until': datetime.now() - timedelta(days=args.days)
+	}
+
 	# Retrieve incidents from PagerDuty API
 	api_token = authenticate_to_pd(args.token, args.token_file)
 	session = APISession(api_token)
@@ -89,10 +108,10 @@ def get_incidents(args):
 	# Read incidents from the file, for the specified layer
 	# incidents = read_file(args.file, args.layer)
 	try:
-		return [
+		incidents = [
 			i for i in session.list_all(
 				'incidents',
-				params=request_params
+				params=this_period_request_params
 				) if (
 					is_in_layer(
 						i['created_at'],
@@ -102,6 +121,23 @@ def get_incidents(args):
 					)
 				)
 			]
+
+		previous_incidents = [
+			i for i in session.list_all(
+				'incidents',
+				params=previous_period_request_params
+				) if (
+					is_in_layer(
+						i['created_at'],
+						args.layer
+					) and (
+					i['urgency'] == 'high'
+					)
+				)
+			]
+
+
+		return incidents, previous_incidents
 
 	except PDClientError as e:
 		if e.response:
