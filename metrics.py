@@ -36,6 +36,9 @@ def main():
     clusters_parser = subparser.add_parser("clusters", help="retrieve cluster metrics")
     populate_args(clusters_parser)
 
+    clusters_parser = subparser.add_parser("all", help="retrieve all metrics")
+    populate_args(clusters_parser)
+
     args = parser.parse_args()
 
     if args.layers is None:
@@ -70,6 +73,9 @@ def main():
     if args.subcommand == "alerts":
         alerts(incidents, args.count)
     elif args.subcommand == "clusters":
+        clusters(incidents, args.count)
+    elif args.subcommand == "all":
+        alerts(incidents, args.count)
         clusters(incidents, args.count)
 
 

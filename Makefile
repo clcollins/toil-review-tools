@@ -33,4 +33,4 @@ tag_image:
 
 
 run:
-	@podman run --tty --env PD_TOKEN=$(TOKEN) --rm $(LATEST_IMAGE) alerts --layers $(LAYERS) --days $(DAYS)
+	@podman run --tty --env PD_TOKEN=$(TOKEN) --rm $(LATEST_IMAGE) all --layers $(LAYERS) --days $(DAYS)
