@@ -3,10 +3,13 @@ certifi==2021.10.8
 charset-normalizer==2.0.10
 click==8.0.3
 idna==3.3
+mccabe==0.6.1
 mypy-extensions==0.4.3
 pathspec==0.9.0
 pdpyras==4.4.0
 platformdirs==2.4.1
+pycodestyle==2.8.0
+pyflakes==2.4.0
 PyYAML==6.0
 requests==2.27.1
 tomli==2.0.0
