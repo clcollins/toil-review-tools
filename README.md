@@ -7,7 +7,7 @@ Tools to help with analytics and reporting for TOIL review.
 The binaries can be built locally, or within a container.
 
 ### Containerized
- 
+
 ```shell
 # Using Make
 make all
@@ -26,4 +26,3 @@ python3 -m venv ./venv-toil-review-tools
 # Or alternatively, installing directly
 python3 -m pip install -r requirements.txt
 ```
- 
