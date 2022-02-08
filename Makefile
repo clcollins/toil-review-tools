@@ -19,14 +19,14 @@ all: build test_image tag_image
 build: build_binary build_image
 
 build_binary:
-	@/venv-toil-review-tools/bin/pyinstaller --onefile metrics.py
-	@/venv-toil-review-tools/bin/staticx dist/metrics dist/metrics_app
+	@./venv-toil-review-tools/bin/pyinstaller --onefile metrics.py
+	@./venv-toil-review-tools/bin/staticx dist/metrics dist/metrics_app
 
 build_image:
-	@odman build --tag $(IMAGE_REF):$(GIT_HASH) --label ".metadata.project-name=$(PROJECT)" .
+	@podman build --tag $(IMAGE_REF):$(GIT_HASH) --label ".metadata.project-name=$(PROJECT)" .
 
 test_image:
-	@odman run --tty --rm $(IMAGE_REF):$(GIT_HASH)
+	@podman run --tty --rm $(IMAGE_REF):$(GIT_HASH)
 
 tag_image:
 	@podman tag $(IMAGE_REF):$(GIT_HASH) $(IMAGE_REF):latest
