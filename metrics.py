@@ -8,8 +8,6 @@
 
 import argparse
 import re
-import sys
-from tabnanny import verbose
 import yaml
 
 from collections import Counter
@@ -23,7 +21,7 @@ default_token_file = Path.home().joinpath('.config', 'pagerduty', 'pd.yml')
 pd_time_format = '%Y-%m-%dT%H:%M:%SZ'
 
 sre_team_ids = ['PASPK4G']
-layers = {
+pd_layers = {
 	1: '22:30',
 	2: '3:30',
 	3: '8:30',
@@ -44,14 +42,13 @@ def main():
 
 	args = parser.parse_args()
 
+	if args.layers is None:
+		args.layers = pd_layers.keys()
+
+	print(f"Including incidents from layers: {', '.join(str(item) for item in args.layers)}")
+
 	# Retrieve incidents from PagerDuty API
-	incident_dict = get_incidents(args)
-
-	incidents = incident_dict['current']
-	previous_incidents = incident_dict['previous']
-
-	# Read incidents from the file, for the specified layer
-	# incidents = read_file(args.file, args.layer)
+	incidents, previous_incidents = get_incidents(args)
 
 	if incidents is None:
 		print('No incidents found')
@@ -80,8 +77,8 @@ def main():
 def populate_args(parser):
 	parser.add_argument('-c', '--count', type=int, required=False, default=default_result_count,
 		help=f'Number of results to display (default: {default_result_count})')
-	parser.add_argument('-l', '--layer', type=int, required=True,
-		choices=layers.keys(), help='Layer (region) to filter')
+	parser.add_argument('-l', '--layers', nargs='+', type=int, required=False,
+		choices=pd_layers.keys(), help='Layer (region) to filter')
 	parser.add_argument('-d', '--days', type=int, required=False, default=default_days_count,
 		help=f'Number of previous days to include (default: {default_days_count})')
 	parser.add_argument('-v', '--verbose', action='store_true', required=False, default=False,
@@ -131,7 +128,7 @@ def get_incidents(args):
 				) if (
 					is_in_layer(
 						i['created_at'],
-						args.layer
+						args.layers
 					) and (
 					i['urgency'] == 'high'
 					)
@@ -160,7 +157,7 @@ def get_incidents(args):
 				) if (
 					is_in_layer(
 						i['created_at'],
-						args.layer
+						args.layers
 					) and (
 					i['urgency'] == 'high'
 					)
@@ -176,7 +173,8 @@ def get_incidents(args):
 		else:
 			raise e
 
-	return {"current": incidents, "previous": previous_incidents}
+	return incidents, previous_incidents
+
 
 # alerts returns a dict of top alerts and the count of each
 def alerts(incidents, count):
@@ -263,12 +261,17 @@ def parse_description_for_cluster(description):
 
 
 # is_in_layer checks if a datetime is in the shift covered by the layer
-def is_in_layer(time_string, layer):
-	return is_time_between(
-		convert_time_from_string(layers[layer]),
-		convert_time_from_string(layers[layer_plus_one(layer)]),
-		datetime.strptime(time_string, pd_time_format).time()
-	)
+def is_in_layer(time_string, requested_layers):
+	for layer in requested_layers:
+		if is_time_between(
+			convert_time_from_string(pd_layers[layer]),
+			convert_time_from_string(pd_layers[layer_plus_one(layer)]),
+			datetime.strptime(time_string, pd_time_format).time()
+		):
+			return True
+
+	# If not in any layers, return False
+	return False
 
 
 # is_time_between checks if a time is between two other times
@@ -281,7 +284,7 @@ def is_time_between(startTime, endTime, checkTime):
 
 # layer_plus_one handles the edge case where the layer is the last layer
 def layer_plus_one(layer):
-	return layer + 1 if layer < len(layers) else 1
+	return layer + 1 if layer < len(pd_layers) else 1
 
 
 # convert_time_from_string converts a string of the form 'HH:MM' to a datetime
