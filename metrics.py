@@ -9,6 +9,7 @@
 import argparse
 import re
 import sys
+from tabnanny import verbose
 import yaml
 
 from collections import Counter
@@ -33,7 +34,7 @@ layers = {
 
 def main():
 	parser = argparse.ArgumentParser()
-	subparser = parser.add_subparsers(dest='command')
+	subparser = parser.add_subparsers(dest='subcommand', required=True)
 
 	alerts_parser = subparser.add_parser('alerts', help="whatsinaname")
 	populate_args(alerts_parser)
@@ -44,7 +45,10 @@ def main():
 	args = parser.parse_args()
 
 	# Retrieve incidents from PagerDuty API
-	incidents, previous_incidents = get_incidents(args)
+	incident_dict = get_incidents(args)
+
+	incidents = incident_dict['current']
+	previous_incidents = incident_dict['previous']
 
 	# Read incidents from the file, for the specified layer
 	# incidents = read_file(args.file, args.layer)
@@ -57,14 +61,18 @@ def main():
 		print('No previous incidents found')
 		return
 
-	print(
-		f"{len(incidents)} high incidents in the last {args.days} days"
-		f"Percent Change from the previous period: {len(previous_incidents) / len(incidents) * 100:.2f}%"
+	debug(
+		args.verbose,
+		f'Current period incidents ({args.days} days): {len(incidents)}',
+		f'Previous period incidents ({args.days} days): {len(previous_incidents)}'
 	)
 
-	if args.command == 'alerts':
+	print(f"High incidents in the last {args.days} days: {len(incidents)}")
+	print(f"Percent Change from the previous period: {percent_change(len(incidents), len(previous_incidents))}%\n")
+
+	if args.subcommand == 'alerts':
 		alerts(incidents, args.count)
-	elif args.command == 'clusters':
+	elif args.subcommand == 'clusters':
 		clusters(incidents, args.count)
 
 
@@ -76,6 +84,8 @@ def populate_args(parser):
 		choices=layers.keys(), help='Layer (region) to filter')
 	parser.add_argument('-d', '--days', type=int, required=False, default=default_days_count,
 		help=f'Number of previous days to include (default: {default_days_count})')
+	parser.add_argument('-v', '--verbose', action='store_true', required=False, default=False,
+		help=f'Enable verbose output')
 
 	auth_group = parser.add_mutually_exclusive_group()
 	auth_group.add_argument('-a', '--token_file',
@@ -89,9 +99,12 @@ def populate_args(parser):
 
 
 def get_incidents(args):
-	this_period_request_params = {
+	request_params = {
 		'urgencies[]': ['high'],
 		'team_ids[]': sre_team_ids,
+	}
+
+	this_period_request_params = {
 		'since': datetime.now() - timedelta(days=args.days),
 		'until': datetime.now()
 	}
@@ -101,17 +114,20 @@ def get_incidents(args):
 		'until': datetime.now() - timedelta(days=args.days)
 	}
 
+
 	# Retrieve incidents from PagerDuty API
 	api_token = authenticate_to_pd(args.token, args.token_file)
 	session = APISession(api_token)
 
-	# Read incidents from the file, for the specified layer
-	# incidents = read_file(args.file, args.layer)
 	try:
+		request_params.update(this_period_request_params)
+		debug(args.verbose, f'Requesting current period incidents for {args.days} days')
+		debug(args.verbose, f'Request parameters: {request_params}')
+
 		incidents = [
 			i for i in session.list_all(
 				'incidents',
-				params=this_period_request_params
+				params=request_params
 				) if (
 					is_in_layer(
 						i['created_at'],
@@ -121,23 +137,6 @@ def get_incidents(args):
 					)
 				)
 			]
-
-		previous_incidents = [
-			i for i in session.list_all(
-				'incidents',
-				params=previous_period_request_params
-				) if (
-					is_in_layer(
-						i['created_at'],
-						args.layer
-					) and (
-					i['urgency'] == 'high'
-					)
-				)
-			]
-
-
-		return incidents, previous_incidents
 
 	except PDClientError as e:
 		if e.response:
@@ -148,6 +147,36 @@ def get_incidents(args):
 		else:
 			raise e
 
+	# Now get the previous period incidents
+	try:
+		request_params.update(previous_period_request_params)
+		debug(args.verbose, f'Requesting previous period incidents for {args.days} days')
+		debug(args.verbose, f'Request parameters: {request_params}')
+
+		previous_incidents = [
+			i for i in session.list_all(
+				'incidents',
+				params=request_params
+				) if (
+					is_in_layer(
+						i['created_at'],
+						args.layer
+					) and (
+					i['urgency'] == 'high'
+					)
+				)
+			]
+
+	except PDClientError as e:
+		if e.response:
+			if e.response.status_code == 404:
+				print("User not found")
+			elif e.response.status_code == 401:
+				raise e
+		else:
+			raise e
+
+	return {"current": incidents, "previous": previous_incidents}
 
 # alerts returns a dict of top alerts and the count of each
 def alerts(incidents, count):
@@ -273,6 +302,16 @@ def authenticate_to_pd(token, token_file):
 				print(err)
 
 	return token
+
+
+def percent_change(current, previous):
+	return round(((current - previous) / previous) * 100, 2)
+
+
+def debug(verbose, *args):
+	if verbose:
+		for i in args:
+			print(f"[DEBUG] {i}")
 
 
 if __name__ == '__main__':
