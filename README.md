@@ -9,8 +9,8 @@ The binaries can be built locally, or within a container.
 ### Containerized
 
 ```shell
-# Using Make
-make all
+# Using Make, just run the `make` command
+make
 
 # Or alternatively, specifying your container engine:
 CONTAINER_SYBSYS='podman' make all
