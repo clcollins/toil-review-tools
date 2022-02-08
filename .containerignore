@@ -1,0 +1,9 @@
+Dockerfile
+Containerfile
+__pycache__/
+dist/
+tmp/
+.gitignore
+License
+Makefile
+README.md
