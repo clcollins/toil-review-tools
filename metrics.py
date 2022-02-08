@@ -36,8 +36,8 @@ def main():
     clusters_parser = subparser.add_parser("clusters", help="retrieve cluster metrics")
     populate_args(clusters_parser)
 
-    clusters_parser = subparser.add_parser("all", help="retrieve all metrics")
-    populate_args(clusters_parser)
+    all_parser = subparser.add_parser("all", help="retrieve all metrics")
+    populate_args(all_parser)
 
     args = parser.parse_args()
 
@@ -76,6 +76,7 @@ def main():
         clusters(incidents, args.count)
     elif args.subcommand == "all":
         alerts(incidents, args.count)
+        print("\n")
         clusters(incidents, args.count)
 
 
