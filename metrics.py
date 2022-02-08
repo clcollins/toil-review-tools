@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import os
 import re
 import yaml
 
@@ -9,9 +10,10 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from pdpyras import APISession, PDClientError
 
+default_token_file = Path.home().joinpath(".config", "pagerduty", "pd.yml")
+
 default_result_count = 5
 default_days_count = 7
-default_token_file = Path.home().joinpath(".config", "pagerduty", "pd.yml")
 pd_time_format = "%Y-%m-%dT%H:%M:%SZ"
 
 sre_team_ids = ["PASPK4G"]
@@ -140,7 +142,7 @@ def get_incidents(args):
     }
 
     # Retrieve incidents from PagerDuty API
-    api_token = authenticate_to_pd(args.token, args.token_file)
+    api_token = retrieve_token(args.verbose, args.token, args.token_file)
     session = APISession(api_token)
 
     try:
@@ -307,8 +309,15 @@ def convert_time_from_string(time_string):
 
 # authenticate_to_pd authenticates to PagerDuty API using the provided token,
 # or the token in the token file as a fallback
-def authenticate_to_pd(token, token_file):
-    if token is None:
+def retrieve_token(verbose, token, token_file):
+    if token:
+        debug(verbose, "Using provided token")
+        return token
+    elif os.getenv("PD_TOKEN"):
+        debug(verbose, "Using PD_TOKEN environment variable")
+        return os.getenv("PD_TOKEN")
+    else:
+        debug(verbose, "Using provided token_file")
         with open(token_file, "r") as yaml_data:
             try:
                 data = yaml.safe_load(yaml_data)
@@ -316,8 +325,6 @@ def authenticate_to_pd(token, token_file):
 
             except yaml.YAMLError as err:
                 print(err)
-
-    return token
 
 
 def percent_change(current, previous):
