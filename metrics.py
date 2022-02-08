@@ -34,10 +34,10 @@ def main():
 	parser = argparse.ArgumentParser()
 	subparser = parser.add_subparsers(dest='subcommand', required=True)
 
-	alerts_parser = subparser.add_parser('alerts', help="whatsinaname")
+	alerts_parser = subparser.add_parser('alerts', help="retrieve alert metrics")
 	populate_args(alerts_parser)
 
-	clusters_parser = subparser.add_parser('clusters', help="whatsinaname")
+	clusters_parser = subparser.add_parser('clusters', help="retrieve cluster metrics")
 	populate_args(clusters_parser)
 
 	args = parser.parse_args()
