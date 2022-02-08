@@ -76,7 +76,6 @@ def main():
         clusters(incidents, args.count)
     elif args.subcommand == "all":
         alerts(incidents, args.count)
-        print("\n")
         clusters(incidents, args.count)
 
 
