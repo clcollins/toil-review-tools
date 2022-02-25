@@ -33,6 +33,8 @@ test_image:
 tag_image:
 	@$(CONTAINER_SUBSYS) tag $(IMAGE_REF):$(GIT_HASH) $(IMAGE_REF):latest
 
+test:
+	python -m unittest
 
 run:
 	@$(CONTAINER_SUBSYS) run --tty --env PD_TOKEN=$(TOKEN) --rm $(LATEST_IMAGE) all --layers $(LAYERS) --days $(DAYS)
