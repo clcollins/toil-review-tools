@@ -2,6 +2,20 @@
 
 Tools to help with analytics and reporting for TOIL review.
 
+## Setup
+
+The `metrics.py` script requires a PagerDuty API token work.  This can be provided via the `--token` flag, or in a YAML-formatted config file (default: `~/.config/pagerduty/pd.yml`). An optional list of PagerDuty team ids may be specified to filter the list of alerts.  By default, alerts will be retrieved from all of the teams you belong to.
+
+The format of the config file is:
+
+```yaml
+---
+authtoken: < token >
+team_ids:
+  - < team_id_1 >
+  - < team_id_2 >
+```
+
 ## Usage
 
 Example 1: Download alert metrics from PagerDuty for layer 5, 1 day worth (with one previous day to compare against)

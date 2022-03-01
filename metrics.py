@@ -11,13 +11,12 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from pdpyras import APISession, PDClientError
 
-default_token_file = Path.home().joinpath(".config", "pagerduty", "pd.yml")
+default_config_file = Path.home().joinpath(".config", "pagerduty", "pd.yml")
 
 default_result_count = 5
 default_days_count = 7
 pd_time_format = "%Y-%m-%dT%H:%M:%SZ"
 
-sre_team_ids = ["PASPK4G"]
 pd_layers = {
     1: "22:30",
     2: "3:30",
@@ -55,11 +54,14 @@ def main():
     )
 
     # Retrieve incidents from PagerDuty API
+    api_token = retrieve_token(args.verbose, args.token, args.config_file)
+    team_ids = retrieve_team_ids(args.verbose, args.config_file)
+
     incidents = get_incidents(
         args.days,
         args.layers,
-        args.token,
-        args.token_file,
+        api_token,
+        team_ids,
         args.verbose,
         args.cache_file,
         args.no_cache,
@@ -135,11 +137,11 @@ def populate_args(parser):
     auth_group = parser.add_mutually_exclusive_group()
     auth_group.add_argument(
         "-a",
-        "--token_file",
+        "--config_file",
         type=lambda p: Path(p).absolute(),
         required=False,
-        default=default_token_file,
-        help="Path to PagerDuty token YAML file",
+        default=default_config_file,
+        help=f"Path to PagerDuty config YAML file (default: {default_config_file})",
     )
     auth_group.add_argument(
         "-t", "--token", type=str, required=False, help="PagerDuty API token"
@@ -166,7 +168,7 @@ def populate_args(parser):
 # cache_to_file wraps get_incidents and writes the results to a cache file,
 # or returns caches results if appropriate
 def cache_to_file(get_incidents_func):
-    def decorator(days, layers, token, token_file, verbose, cache_file, no_cache):
+    def decorator(days, layers, api_token, team_ids, verbose, cache_file, no_cache):
 
         cache_dir, cache_file = select_cache_file(cache_file, layers, days)
 
@@ -180,7 +182,7 @@ def cache_to_file(get_incidents_func):
         # Retrieve data from PagerDuty API
         # with the get_incidents function
         debug(verbose, f"Cache miss; retrieving data from PagerDuty API")
-        incidents = get_incidents_func(days, layers, token, token_file, verbose)
+        incidents = get_incidents_func(days, layers, api_token, team_ids, verbose)
 
         write_incidents_to_cache(incidents, cache_dir, cache_file, verbose)
 
@@ -260,18 +262,16 @@ def write_incidents_to_cache(incidents, cache_dir, cache_file, verbose):
 
 @cache_to_file
 def get_incidents(
-    num_days, layers, token, token_file, verbose, cache_file=None, no_cache=True
+    num_days, layers, api_token, team_ids, verbose, cache_file=None, no_cache=True
 ):
     # TODO: COMBINE REQUESTS INTO ONE AND PARSE
     request_params = {
         "urgencies[]": ["high"],
-        "team_ids[]": sre_team_ids,
+        "team_ids[]": team_ids,
         "since": helpers.today() - timedelta(days=num_days * 2),
         "until": helpers.today(),
     }
 
-    # Retrieve incidents from PagerDuty API
-    api_token = retrieve_token(verbose, token, token_file)
     session = APISession(api_token)
 
     try:
@@ -423,9 +423,21 @@ def next_layer(layer):
     return layer + 1 if layer < len(pd_layers) else 1
 
 
+# retrieve_team_ids gets the list of team ids from the config file
+def retrieve_team_ids(verbose, config_file):
+    debug(verbose, f"Getting team IDs from config file: {config_file}")
+    with open(config_file, "r") as yaml_data:
+        data = yaml.safe_load(yaml_data)
+
+        if "team_ids" in data.keys():
+            return data["team_ids"]
+
+    return []
+
+
 # authenticate_to_pd authenticates to PagerDuty API using the provided token,
-# or the token in the token file as a fallback
-def retrieve_token(verbose, token, token_file):
+# or the token in the config file as a fallback
+def retrieve_token(verbose, token, config_file):
     if token:
         debug(verbose, "Using provided token")
         return token
@@ -433,8 +445,8 @@ def retrieve_token(verbose, token, token_file):
         debug(verbose, "Using PD_TOKEN environment variable")
         return os.getenv("PD_TOKEN")
     else:
-        debug(verbose, "Using provided token_file")
-        with open(token_file, "r") as yaml_data:
+        debug(verbose, "Using provided config_file")
+        with open(config_file, "r") as yaml_data:
             try:
                 data = yaml.safe_load(yaml_data)
                 return data["authtoken"]
