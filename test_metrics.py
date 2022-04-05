@@ -94,46 +94,37 @@ class TestSelectCacheFile(TestCase):
 
         testcases = [
             {
-                "name": "test_select_cache_file_custom",
+                "name": "test_select_cache_file_custom_01",
                 "cache_file": "/tmp/test",
                 "layers": [1, 2],
                 "days": 1,
-                "expect": (Path("/tmp"), Path("/tmp/test")),
+                "expect": (Path("/tmp/test")),
             },
             {
-                "name": "test_select_cache_file_custom",
+                "name": "test_select_cache_file_custom_02",
                 "cache_file": None,
                 "layers": [1, 2],
                 "days": 1,
-                "expect": (
-                    Path("/home/user/.cache/toil-review-metrics"),
-                    Path(
-                        "/home/user/.cache/toil-review-metrics/incident-cache_2020-01-01_1-2_1-day.json"
-                    ),
+                "expect": Path(
+                    "/home/user/.cache/toil-review-metrics/incident-cache_2020-01-01_1-2_1-day.json"
                 ),
             },
             {
-                "name": "test_select_cache_file_custom",
+                "name": "test_select_cache_file_custom_03",
                 "cache_file": None,
                 "layers": [2],
                 "days": 3,
-                "expect": (
-                    Path("/home/user/.cache/toil-review-metrics"),
-                    Path(
-                        "/home/user/.cache/toil-review-metrics/incident-cache_2020-01-01_2_3-day.json"
-                    ),
+                "expect": Path(
+                    "/home/user/.cache/toil-review-metrics/incident-cache_2020-01-01_2_3-day.json"
                 ),
             },
             {
-                "name": "test_select_cache_file_custom",
+                "name": "test_select_cache_file_custom_04",
                 "cache_file": None,
                 "layers": [5, 1, 2],
                 "days": 3,
-                "expect": (
-                    Path("/home/user/.cache/toil-review-metrics"),
-                    Path(
-                        "/home/user/.cache/toil-review-metrics/incident-cache_2020-01-01_5-1-2_3-day.json"
-                    ),
+                "expect": Path(
+                    "/home/user/.cache/toil-review-metrics/incident-cache_2020-01-01_5-1-2_3-day.json"
                 ),
             },
         ]

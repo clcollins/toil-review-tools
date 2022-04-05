@@ -44,24 +44,36 @@ def main():
     all_parser = subparser.add_parser("all", help="retrieve all metrics")
     populate_args(all_parser)
 
+    download_parser = subparser.add_parser(
+        "download", help="download incident data and stop"
+    )
+    populate_args(download_parser)
+
     args = parser.parse_args()
 
     if args.layers is None:
         args.layers = pd_layers.keys()
 
+    if args.cache_file is None:
+        args.cache_file = select_cache_file(args.cache_file, args.layers, args.days)
+
+    if args.subcommand == "download" and args.no_cache is False:
+        args.no_cache = True
+        print(
+            f"[WARNING] --no-cache=True is required for {args.subcommand} subcommand; ",
+            f"continuing with caching disabled",
+            sep=" ",
+        )
+
     print(
         f"Including incidents from layers: {', '.join(str(item) for item in args.layers)}"
     )
 
-    # Retrieve incidents from PagerDuty API
-    api_token = retrieve_token(args.verbose, args.token, args.config_file)
-    team_ids = retrieve_team_ids(args.verbose, args.config_file)
-
     incidents = get_incidents(
         args.days,
         args.layers,
-        api_token,
-        team_ids,
+        retrieve_token(args.verbose, args.token, args.config_file),
+        retrieve_team_ids(args.verbose, args.config_file),
         args.verbose,
         args.cache_file,
         args.no_cache,
@@ -69,6 +81,10 @@ def main():
 
     if incidents is None:
         print("No incidents found")
+        return
+
+    if args.subcommand == "download":
+        print(f"Incident data saved to {args.cache_file}")
         return
 
     current_incidents, previous_incidents = split_incidents_by_period(
@@ -170,8 +186,6 @@ def populate_args(parser):
 def cache_to_file(get_incidents_func):
     def decorator(days, layers, api_token, team_ids, verbose, cache_file, no_cache):
 
-        cache_dir, cache_file = select_cache_file(cache_file, layers, days)
-
         # Just read incidents from cache file if appropriate
         if should_read_from_cache(no_cache, cache_file, verbose):
             incidents = read_incidents_from_cache(cache_file, verbose)
@@ -184,14 +198,14 @@ def cache_to_file(get_incidents_func):
         debug(verbose, f"Cache miss; retrieving data from PagerDuty API")
         incidents = get_incidents_func(days, layers, api_token, team_ids, verbose)
 
-        write_incidents_to_cache(incidents, cache_dir, cache_file, verbose)
+        write_incidents_to_cache(incidents, cache_file, verbose)
 
         return incidents
 
     return decorator
 
 
-# select_cache_file returns the cache directory and file name based on the
+# select_cache_file returns the file name based on the
 # provided cache_file input argument, or a default if None
 def select_cache_file(cache_file, layers, days):
 
@@ -208,9 +222,7 @@ def select_cache_file(cache_file, layers, days):
         else Path.home().joinpath(".cache", "toil-review-metrics", cache_file_name)
     )
 
-    parent = file.parents[0]
-
-    return parent, file
+    return file
 
 
 # should_read_from_cache returns True if the cache file exists and the
@@ -250,7 +262,9 @@ def read_incidents_from_cache(cache_file, verbose):
 
 
 # write_incidents_to_cache writes incidents to the cache file
-def write_incidents_to_cache(incidents, cache_dir, cache_file, verbose):
+def write_incidents_to_cache(incidents, cache_file, verbose):
+    cache_dir = cache_file.parents[0]
+
     if cache_dir.exists() is False:
         debug(verbose, f"Creating cache directory: {cache_dir}")
         cache_dir.mkdir(parents=True, exist_ok=True)
@@ -312,7 +326,7 @@ def split_incidents_by_period(incidents, days):
     return current, previous
 
 
-# alerts returns a dict of top alerts and the count of each
+# alerts prints a dict of top alerts and the count of each
 def alerts(incidents, count):
     alert_list = [parse_description_for_alerts(item["summary"]) for item in incidents]
 
@@ -321,7 +335,7 @@ def alerts(incidents, count):
         print(f"{v}\t{k}")
 
 
-# clusters returns a dict of top alerting clusters and the count of each
+# clusters prints a dict of top alerting clusters and the count of each
 def clusters(incidents, count):
     cluster_list = [
         parse_description_for_cluster(item["service"]["summary"])
