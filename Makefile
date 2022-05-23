@@ -1,4 +1,4 @@
-CONTAINER_SUBSYS=podman
+CONTAINER_SUBSYS?=podman
 
 PROJECT := toil-review-tools
 IMAGE := metrics
